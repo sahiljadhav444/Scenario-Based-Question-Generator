@@ -7,34 +7,39 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from app.services.question_generator import QuestionGenerator
 from app.models.question_schema import TopicRequest, ScenarioRequest
-from tests.test_json_validator import VALID_5_QUESTIONS_PAYLOAD
+from tests.test_json_validator import VALID_5_QUESTIONS_PAYLOAD, VALID_MULTI_SCENARIO_PAYLOAD
 
 
 def test_topic_question_generation_success():
     """Test successful scenario and question generation from a topic."""
     async def _test():
         mock_llm_manager = MagicMock()
-        # 1st call: generate scenario from topic
-        # 2nd call: generate questions from generated scenario
-        generated_scenario = "A college introduces an online library system where students borrow and return books."
+        # 1st call: generate 2-3 scenarios from topic
+        # 2nd call: generate questions from generated scenarios
+        generated_scenarios_json = json.dumps({
+            "topic": "Library Management System",
+            "scenarios": VALID_MULTI_SCENARIO_PAYLOAD["scenarios"]
+        })
         mock_llm_manager.generate = AsyncMock(
             side_effect=[
-                (generated_scenario, "groq", "llama-3.3-70b-versatile", 0.45, False),
-                (json.dumps(VALID_5_QUESTIONS_PAYLOAD), "groq", "llama-3.3-70b-versatile", 0.85, False),
+                (generated_scenarios_json, "groq", "llama-3.3-70b-versatile", 0.45, False),
+                (json.dumps(VALID_MULTI_SCENARIO_PAYLOAD), "groq", "llama-3.3-70b-versatile", 0.85, False),
             ]
         )
 
         generator = QuestionGenerator(manager=mock_llm_manager)
-        req = TopicRequest(topic="Library Management System")
+        req = TopicRequest(topic="Online Hospital Appointment Booking System")
 
         response, metadata = await generator.generate_questions(req)
 
+        assert len(response.scenarios) == 2
         assert len(response.questions) == 5
-        assert response.topic == "Library Management System"
-        assert response.questions[0].questionId == "11111111-1111-4111-8111-111111111111"
+        assert response.topic == "Online Hospital Appointment Booking System"
+        assert response.questions[0].questionId == "aaaaaaa1-1111-4111-8111-111111111111"
         assert response.questions[0].questionType == "scenario_based"
         assert response.questions[0].difficultyTag == "Easy"
-        assert response.questions[0].optionsList[1].isCorrect is True
+        assert any(q.questionFormat == "MCQ" for q in response.questions)
+        assert any(q.questionFormat == "MSQ" for q in response.questions)
         assert metadata.provider_used == "groq"
         assert metadata.fallback_occurred is False
         assert metadata.total_questions == 5
@@ -66,12 +71,52 @@ def test_generate_scenario_from_topic_direct():
     asyncio.run(_test())
 
 
+def test_generate_scenarios_from_topic_direct():
+    """Test generating 2-3 scenarios list directly from topic."""
+    async def _test():
+        scenarios_json = json.dumps({
+            "topic": "Online Grocery",
+            "scenarios": [
+                {
+                    "scenarioId": "11111111-1111-4111-8111-111111111111",
+                    "scenarioText": "A customer orders groceries online and selects a 2-hour delivery window with express shipping."
+                },
+                {
+                    "scenarioId": "22222222-2222-4222-8222-222222222222",
+                    "scenarioText": "An inventory clerk discovers perishable dairy products near expiry and must apply dynamic discounts."
+                }
+            ]
+        })
+        mock_llm_manager = MagicMock()
+        mock_llm_manager.generate = AsyncMock(
+            return_value=(
+                scenarios_json,
+                "groq",
+                "llama-3.3-70b-versatile",
+                0.40,
+                False,
+            )
+        )
+        generator = QuestionGenerator(manager=mock_llm_manager)
+        scenarios, provider, model, dur, fallback = await generator.generate_scenarios_from_topic("Online Grocery")
+
+        assert len(scenarios) == 2
+        assert scenarios[0].scenarioId == "11111111-1111-4111-8111-111111111111"
+        assert "express shipping" in scenarios[0].scenarioText
+        assert provider == "groq"
+
+    asyncio.run(_test())
+
+
 def test_question_generation_auto_repair():
     """Test self-repair workflow when the question generation attempt has invalid JSON syntax."""
     async def _test():
-        generated_scenario = "A hospital manages emergency patient appointments and bed allocations."
+        scenarios_json = json.dumps({
+            "topic": "Online Hospital Appointment Booking System",
+            "scenarios": VALID_MULTI_SCENARIO_PAYLOAD["scenarios"]
+        })
         invalid_raw = "Here is bad json: { 'questions': [ incomplete "
-        valid_raw = json.dumps(VALID_5_QUESTIONS_PAYLOAD)
+        valid_raw = json.dumps(VALID_MULTI_SCENARIO_PAYLOAD)
 
         mock_llm_manager = MagicMock()
         # 1st call: scenario generation
@@ -79,17 +124,18 @@ def test_question_generation_auto_repair():
         # 3rd call: auto-repair returns valid JSON
         mock_llm_manager.generate = AsyncMock(
             side_effect=[
-                (generated_scenario, "groq", "llama-3.3-70b-versatile", 0.3, False),
+                (scenarios_json, "groq", "llama-3.3-70b-versatile", 0.3, False),
                 (invalid_raw, "groq", "llama-3.3-70b-versatile", 0.4, False),
                 (valid_raw, "groq", "llama-3.3-70b-versatile", 0.6, False),
             ]
         )
 
         generator = QuestionGenerator(manager=mock_llm_manager)
-        req = TopicRequest(topic="Hospital Management")
+        req = TopicRequest(topic="Online Hospital Appointment Booking System")
 
         response, metadata = await generator.generate_questions(req)
 
+        assert len(response.scenarios) == 2
         assert len(response.questions) == 5
         assert metadata.attempts == 2
         assert mock_llm_manager.generate.call_count == 3

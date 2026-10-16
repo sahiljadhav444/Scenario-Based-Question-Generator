@@ -182,7 +182,7 @@ async def run_cli(topic_text: str = None, scenario_text: str = None, provider: s
     try:
         questions = await scenario_service.generate_pure_questions(req)
         # Print ONLY valid JSON to stdout
-        print(json.dumps(questions.model_dump(), indent=2))
+        print(json.dumps(questions.model_dump(exclude_none=True), indent=2))
     except Exception as e:
         sys.stderr.write(f"Error generating questions: {e}\n")
         sys.exit(1)

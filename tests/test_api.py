@@ -115,3 +115,67 @@ def test_invalid_topic_validation_error(client):
     response = client.post("/api/v1/generate-questions", json={"topic": ""})
     assert response.status_code == 422
 
+
+def test_generate_questions_endpoint_multi_scenario(client):
+    """Test generating questions with multiple scenarios and both MCQ and MSQ."""
+    from tests.test_json_validator import VALID_MULTI_SCENARIO_PAYLOAD
+    with patch("app.services.question_generator.QuestionGenerator.generate_questions") as mock_generate:
+        from app.models.question_schema import QuestionGenerationResponse, GenerationMetadata
+
+        model_resp = QuestionGenerationResponse.model_validate(VALID_MULTI_SCENARIO_PAYLOAD)
+        mock_meta = GenerationMetadata(
+            provider_used="groq",
+            model_used="llama-3.3-70b-versatile",
+            duration_seconds=1.2,
+            total_questions=5,
+            attempts=1,
+            fallback_occurred=False,
+        )
+        mock_generate.return_value = (model_resp, mock_meta)
+
+        payload = {
+            "topic": "Online Hospital Appointment Booking System"
+        }
+        response = client.post("/api/v1/generate-questions", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "topic" in data
+        assert "scenarios" in data
+        assert "questions" in data
+        assert len(data["scenarios"]) == 2
+        assert len(data["questions"]) == 5
+
+        # Check scenarios structure
+        valid_sids = set()
+        for sc in data["scenarios"]:
+            assert "scenarioId" in sc
+            assert "scenarioText" in sc
+            valid_sids.add(sc["scenarioId"])
+
+        # Check questions structure & MCQ / MSQ
+        has_mcq = False
+        has_msq = False
+        for q in data["questions"]:
+            assert "questionId" in q
+            assert "scenarioId" not in q
+            assert "calculationDraft" not in q
+            assert q["questionType"] == "scenario_based"
+            assert q["questionFormat"] in ("MCQ", "MSQ")
+            assert q["difficultyTag"] in ("Easy", "Medium", "Hard")
+            assert "questionText" in q
+            assert "optionsList" in q
+            assert len(q["optionsList"]) == 4
+
+            correct_count = sum(1 for opt in q["optionsList"] if opt["isCorrect"] is True)
+            if q["questionFormat"] == "MCQ":
+                has_mcq = True
+                assert correct_count == 1
+            elif q["questionFormat"] == "MSQ":
+                has_msq = True
+                assert correct_count >= 2
+
+        assert has_mcq is True
+        assert has_msq is True
+
+

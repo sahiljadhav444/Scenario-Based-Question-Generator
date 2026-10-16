@@ -4,6 +4,7 @@ Scenario Service providing business logic and high-level workflow orchestration.
 from typing import List, Optional, Union, Tuple
 from app.models.question_schema import (
     QuestionGenerationResponse,
+    ScenarioItem,
     TopicRequest,
     ScenarioRequest,
     ScenarioAPIResponse,
@@ -35,6 +36,21 @@ class ScenarioService:
             status="healthy" if available else "degraded (no API keys configured)",
             version="1.0.0",
             available_providers=available,
+        )
+
+    async def generate_scenarios_from_topic(
+        self,
+        topic: str,
+        preferred_provider: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> Tuple[List[ScenarioItem], str, str, float, bool]:
+        """Generates 2 to 3 distinct scenarios based on a topic."""
+        return await self.generator.generate_scenarios_from_topic(
+            topic=topic,
+            preferred_provider=preferred_provider,
+            model=model,
+            temperature=temperature,
         )
 
     async def generate_scenario_from_topic(

@@ -232,3 +232,285 @@ def format_repair_prompt(scenario: str, raw_output: str, error_message: str, top
         .replace("{raw_output}", raw_output.strip())
         .replace("{error_message}", error_message.strip())
     )
+
+
+# ==========================================
+# 3. Topic -> 2 to 3 Scenarios Generation Prompts
+# ==========================================
+
+TOPIC_SCENARIOS_SYSTEM_PROMPT = """You are an expert scenario creator for educational assessments and problem-solving evaluations.
+Your task is to create 2 to 3 distinct, realistic, and context-rich scenarios based strictly on the given topic.
+
+# THE RULES:
+1. Number of Scenarios: Generate EXACTLY 2 or 3 distinct scenarios.
+2. Direct Relevance: Every scenario MUST be directly and clearly related to the given topic.
+3. Distinct Situations: Each scenario must represent a completely different situation, problem, workflow, edge case, or decision-making process related to the topic. Avoid duplicate, repetitive, or overlapping situations.
+4. Information Rich & Self-Contained: Describe concrete facts, conditions, rules, numerical values, or system behaviors sufficient to generate logical assessment questions. Keep each scenario concise (typically 2 to 5 clear sentences).
+5. Closed-World Foundation: Each scenario serves as a self-contained, closed-world primary source of truth.
+6. JSON Output: Output strictly valid JSON with exact field names: "topic" and "scenarios". In "scenarios", provide 2 or 3 objects, each with "scenarioId" (valid UUID v4) and "scenarioText". Do not include markdown fences or text outside the JSON."""
+
+
+TOPIC_SCENARIOS_USER_PROMPT = """Create 2 to 3 distinct, realistic assessment scenarios based on the following topic.
+
+Topic: {topic}
+
+Requirements:
+- Generate 2 or 3 scenarios (never fewer than 2, never more than 3).
+- Each scenario must represent a distinct problem or situation related to "{topic}".
+- Avoid duplicate, irrelevant, or repetitive scenarios.
+- Include specific conditions, facts, constraints, and roles in each scenario.
+- Keep each scenario between 2 and 5 clear sentences.
+- Assign each scenario a unique UUID v4 for "scenarioId".
+
+Return ONLY valid JSON matching this exact structure:
+{{
+  "topic": "{topic}",
+  "scenarios": [
+    {{
+      "scenarioId": "c1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c",
+      "scenarioText": "First distinct scenario text..."
+    }},
+    {{
+      "scenarioId": "e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b",
+      "scenarioText": "Second distinct scenario text representing a different problem..."
+    }}
+  ]
+}}"""
+
+
+def format_topic_scenarios_prompt(topic: str) -> str:
+    """Formats the prompt for generating 2-3 scenarios from a topic."""
+    return TOPIC_SCENARIOS_USER_PROMPT.replace("{topic}", topic.strip())
+
+
+# ==========================================
+# 4. Multi-Scenario -> MCQ & MSQ Questions Prompts
+# ==========================================
+
+SCENARIOS_QUESTION_SYSTEM_PROMPT = """You are an expert assessment question generator specializing in Scenario-Based Question Generation.
+Your task is to generate 5–6 questions IN TOTAL across the 2–3 SCENARIOS provided by the user.
+
+# THE MOST IMPORTANT RULE: STRICT SCENARIO GROUNDING (CLOSED WORLD)
+- The provided scenarios are the PRIMARY AND ONLY source of truth.
+- Every question, option, and correct answer MUST be directly grounded in the provided scenarios.
+- DO NOT invent new people, numbers, dates, locations, rules, policies, systems, consequences, actions, events, or relationships.
+- DO NOT use external general knowledge or assume unmentioned facts.
+- Questions must not introduce facts or assumptions that are not supported by the relevant scenario.
+- Think of each scenario as a closed world.
+
+# QUESTION FORMATS (MCQ & MSQ)
+- You MUST generate both Multiple-Choice Questions (MCQ) and Multiple-Select Questions (MSQ).
+- MCQ: Exactly 4 options, exactly ONE option is correct ("isCorrect": true), exactly three options are incorrect ("isCorrect": false).
+- MSQ: Exactly 4 options, TWO OR MORE options are correct ("isCorrect": true), and remaining options are incorrect ("isCorrect": false). Clearly identify every correct option.
+
+# OUTPUT REQUIREMENTS
+Output strictly valid JSON matching the exact schema with exact field names and no markdown fences or outside commentary."""
+
+
+SCENARIOS_QUESTION_USER_PROMPT = """You are an expert assessment question generator.
+
+Generate a total of 5 to 6 scenario-based questions across the provided scenarios.
+
+======================================================================
+1. INPUT TOPIC & SCENARIOS
+======================================================================
+Topic: {topic}
+
+Scenarios provided:
+{scenarios_block}
+
+======================================================================
+2. QUESTION COUNT & DISTRIBUTION
+======================================================================
+- Generate ONLY 5 to 6 questions IN TOTAL across all scenarios combined (NOT 5-6 questions per scenario).
+- Distribute questions across the generated scenarios appropriately: questions should cover the different scenarios provided.
+- Ground each question strictly in the provided scenarios. Do not mix contradictory details.
+
+======================================================================
+3. QUESTION FORMATS: MCQ & MSQ
+======================================================================
+- You MUST generate BOTH "MCQ" (Multiple-Choice Question) and "MSQ" (Multiple-Select Question) formats.
+- Both formats must be present in the questions list (at least one MCQ and at least one MSQ).
+- Set "questionFormat" to either "MCQ" or "MSQ".
+- For every question:
+  - "optionsList" must contain EXACTLY 4 options with "optionSequenceNo" 1, 2, 3, 4.
+  - For "MCQ": EXACTLY ONE option must have "isCorrect": true, and three have "isCorrect": false.
+  - For "MSQ": TWO OR MORE options must have "isCorrect": true (e.g. 2 or 3 correct options).
+  - All 4 options must have unique, non-empty text.
+  - NEVER use generic options like "All of the above", "None of the above", "Both A and B".
+  - Distractors must be plausible and based on the scenario facts.
+
+======================================================================
+4. DIFFICULTY LEVELS & DISTRIBUTION
+======================================================================
+Allowed values for "difficultyTag":
+- "Easy": Direct understanding of explicit scenario facts.
+- "Medium": Connecting multiple facts or conditions from the scenario.
+- "Hard": Deeper reasoning, analysis, application, or decision-making.
+
+Distribution requirements across the 5–6 questions:
+- If 5 questions: At least 1 Easy, at least 2 Medium, and at least 1 Hard.
+- If 6 questions: At least 1 Easy, at least 2 Medium, and at least 2 Hard.
+
+======================================================================
+5. REQUIRED JSON OUTPUT STRUCTURE
+======================================================================
+Return ONLY valid JSON matching this exact structure:
+
+{{
+  "topic": "{topic}",
+  "scenarios": [
+{scenarios_json_snippets}
+  ],
+  "questions": [
+    {{
+      "questionId": "c8e2b83d-9860-4966-bb8c-8be94f57c15e",
+      "questionType": "scenario_based",
+      "questionFormat": "MCQ",
+      "difficultyTag": "Medium",
+      "subject": "Scenario Assessment",
+      "questionText": "Question based on the scenario situation.",
+      "optionsList": [
+        {{
+          "optionSequenceNo": 1,
+          "optionText": "Option A",
+          "isCorrect": false
+        }},
+        {{
+          "optionSequenceNo": 2,
+          "optionText": "Option B",
+          "isCorrect": true
+        }},
+        {{
+          "optionSequenceNo": 3,
+          "optionText": "Option C",
+          "isCorrect": false
+        }},
+        {{
+          "optionSequenceNo": 4,
+          "optionText": "Option D",
+          "isCorrect": false
+        }}
+      ]
+    }},
+    {{
+      "questionId": "f1a23c4d-5678-49ab-bcde-ef0123456789",
+      "questionType": "scenario_based",
+      "questionFormat": "MSQ",
+      "difficultyTag": "Hard",
+      "subject": "Scenario Assessment",
+      "questionText": "Which of the following conditions must be satisfied according to the scenario? (Select all that apply)",
+      "optionsList": [
+        {{
+          "optionSequenceNo": 1,
+          "optionText": "Condition 1 text",
+          "isCorrect": true
+        }},
+        {{
+          "optionSequenceNo": 2,
+          "optionText": "Condition 2 text",
+          "isCorrect": false
+        }},
+        {{
+          "optionSequenceNo": 3,
+          "optionText": "Condition 3 text",
+          "isCorrect": true
+        }},
+        {{
+          "optionSequenceNo": 4,
+          "optionText": "Condition 4 text",
+          "isCorrect": false
+        }}
+      ]
+    }}
+  ]
+}}
+
+======================================================================
+6. FINAL CHECKLIST BEFORE RETURNING
+======================================================================
+- topic is present.
+- scenarios array contains the input scenarios with their scenarioIds.
+- questions array contains ONLY 5 or 6 questions in total across all scenarios.
+- Every question has a valid UUID questionId.
+- Both MCQ and MSQ question formats are present.
+- MCQ has exactly 1 correct option; MSQ has 2 or more correct options.
+- difficultyTag follows distribution (Easy, Medium, Hard).
+- Do NOT include scenarioId or calculationDraft in question objects.
+- Zero external knowledge or invented details.
+- Output is ONLY raw JSON (no markdown backticks, no extra text).
+"""
+
+
+SCENARIOS_JSON_REPAIR_PROMPT_TEMPLATE = """The previous output failed validation with the following error:
+{error_message}
+
+Raw output was:
+{raw_output}
+
+Please fix the output to strictly conform to the closed-world scenario requirements and required JSON schema:
+Topic: "{topic}"
+
+Scenarios provided:
+{scenarios_block}
+
+Remember:
+1. Return ONLY valid JSON (no markdown backticks, no explanations outside JSON).
+2. Exactly 5 or 6 questions in total in the "questions" array across all scenarios.
+3. Both "MCQ" and "MSQ" question formats MUST be present in the questions list.
+4. For MCQ questions, exactly ONE option must have isCorrect: true.
+5. For MSQ questions, TWO OR MORE options must have isCorrect: true.
+6. Exactly 4 options per question with optionSequenceNo 1..4.
+7. For 5 questions: >=1 Easy, >=2 Medium, >=1 Hard. For 6 questions: >=1 Easy, >=2 Medium, >=2 Hard.
+8. Do NOT include scenarioId or calculationDraft in question objects.
+"""
+
+
+def format_scenarios_question_prompt(scenarios: list, topic: Optional[str] = None) -> str:
+    """Formats the user prompt for generating questions across multiple scenarios."""
+    import json
+    t_val = (topic or "Scenario Assessment").strip()
+
+    blocks = []
+    snippets = []
+    for i, sc in enumerate(scenarios, 1):
+        sid = getattr(sc, "scenarioId", None) if hasattr(sc, "scenarioId") else sc.get("scenarioId", f"scenario-{i}")
+        stext = getattr(sc, "scenarioText", None) if hasattr(sc, "scenarioText") else sc.get("scenarioText", str(sc))
+        blocks.append(f"Scenario {i}:\n{stext}")
+        snippet_obj = {"scenarioId": sid, "scenarioText": stext}
+        snippets.append("    " + json.dumps(snippet_obj))
+
+    scenarios_block = "\n\n".join(blocks)
+    snippets_str = ",\n".join(snippets)
+
+    return (
+        SCENARIOS_QUESTION_USER_PROMPT
+        .replace("{topic}", t_val)
+        .replace("{scenarios_block}", scenarios_block)
+        .replace("{scenarios_json_snippets}", snippets_str)
+    )
+
+
+def format_scenarios_repair_prompt(
+    scenarios: list,
+    raw_output: str,
+    error_message: str,
+    topic: Optional[str] = None,
+) -> str:
+    """Formats a repair prompt when multi-scenario validation fails."""
+    t_val = (topic or "Scenario Assessment").strip()
+    blocks = []
+    for i, sc in enumerate(scenarios, 1):
+        sid = getattr(sc, "scenarioId", None) if hasattr(sc, "scenarioId") else sc.get("scenarioId", f"scenario-{i}")
+        stext = getattr(sc, "scenarioText", None) if hasattr(sc, "scenarioText") else sc.get("scenarioText", str(sc))
+        blocks.append(f"Scenario {i} (scenarioId: {sid}):\n{stext}")
+    scenarios_block = "\n\n".join(blocks)
+
+    return (
+        SCENARIOS_JSON_REPAIR_PROMPT_TEMPLATE
+        .replace("{topic}", t_val)
+        .replace("{scenarios_block}", scenarios_block)
+        .replace("{raw_output}", raw_output.strip())
+        .replace("{error_message}", error_message.strip())
+    )
+

@@ -396,3 +396,207 @@ def test_validate_generated_scenario():
     with pytest.raises(ValueError, match="too short"):
         JSONValidator.validate_generated_scenario("Too short")
 
+
+VALID_MULTI_SCENARIO_PAYLOAD = {
+    "topic": "Online Hospital Appointment Booking System",
+    "scenarios": [
+        {
+            "scenarioId": "11111111-1111-4111-8111-111111111111",
+            "scenarioText": "A patient attempts to book an appointment with a cardiologist using the mobile hospital app. The app allows booking up to 14 days in advance, but requires a pre-existing doctor referral uploaded as a PDF."
+        },
+        {
+            "scenarioId": "22222222-2222-4222-8222-222222222222",
+            "scenarioText": "A specialist clinic manages emergency walk-in consultations where nurses assign high priority to patients with chest pains and moderate priority to patients with fever."
+        }
+    ],
+    "questions": [
+        {
+            "questionId": "aaaaaaa1-1111-4111-8111-111111111111",
+            "questionType": "scenario_based",
+            "questionFormat": "MCQ",
+            "difficultyTag": "Easy",
+            "subject": "Hospital Scheduling",
+            "questionText": "How many days in advance does the hospital mobile app permit cardiology appointments to be booked?",
+            "optionsList": [
+                {"optionSequenceNo": 1, "optionText": "7 days in advance", "isCorrect": False},
+                {"optionSequenceNo": 2, "optionText": "14 days in advance", "isCorrect": True},
+                {"optionSequenceNo": 3, "optionText": "30 days in advance", "isCorrect": False},
+                {"optionSequenceNo": 4, "optionText": "Same-day only", "isCorrect": False}
+            ]
+        },
+        {
+            "questionId": "aaaaaaa2-2222-4222-8222-222222222222",
+            "questionType": "scenario_based",
+            "questionFormat": "MSQ",
+            "difficultyTag": "Medium",
+            "subject": "Hospital Scheduling",
+            "questionText": "Which requirements must be met to book a cardiology appointment through the app? (Select all that apply)",
+            "optionsList": [
+                {"optionSequenceNo": 1, "optionText": "Upload a doctor referral in PDF format", "isCorrect": True},
+                {"optionSequenceNo": 2, "optionText": "Schedule within 14 days in advance", "isCorrect": True},
+                {"optionSequenceNo": 3, "optionText": "Provide in-person paper referral at check-in", "isCorrect": False},
+                {"optionSequenceNo": 4, "optionText": "Book at least 30 days ahead", "isCorrect": False}
+            ]
+        },
+        {
+            "questionId": "aaaaaaa3-3333-4333-8333-333333333333",
+            "questionType": "scenario_based",
+            "questionFormat": "MCQ",
+            "difficultyTag": "Medium",
+            "subject": "Hospital Scheduling",
+            "questionText": "What priority is assigned to a walk-in patient complaining of chest pain?",
+            "optionsList": [
+                {"optionSequenceNo": 1, "optionText": "Low priority", "isCorrect": False},
+                {"optionSequenceNo": 2, "optionText": "Moderate priority", "isCorrect": False},
+                {"optionSequenceNo": 3, "optionText": "High priority", "isCorrect": True},
+                {"optionSequenceNo": 4, "optionText": "Deferred priority", "isCorrect": False}
+            ]
+        },
+        {
+            "questionId": "aaaaaaa4-4444-4444-8444-444444444444",
+            "questionType": "scenario_based",
+            "questionFormat": "MSQ",
+            "difficultyTag": "Hard",
+            "subject": "Hospital Scheduling",
+            "questionText": "Based on the emergency walk-in protocol, which statements accurately reflect the clinic priority guidelines? (Select all that apply)",
+            "optionsList": [
+                {"optionSequenceNo": 1, "optionText": "Patients with fever receive moderate priority", "isCorrect": True},
+                {"optionSequenceNo": 2, "optionText": "Patients with chest pain receive high priority", "isCorrect": True},
+                {"optionSequenceNo": 3, "optionText": "Patients with fever are treated before chest pain patients", "isCorrect": False},
+                {"optionSequenceNo": 4, "optionText": "All walk-ins are treated on a first-come, first-served basis regardless of condition", "isCorrect": False}
+            ]
+        },
+        {
+            "questionId": "aaaaaaa5-5555-4555-8555-555555555555",
+            "questionType": "scenario_based",
+            "questionFormat": "MCQ",
+            "difficultyTag": "Medium",
+            "subject": "Hospital Scheduling",
+            "questionText": "If a patient attempts to book a cardiology appointment 20 days in advance with a valid PDF referral, what is the expected outcome?",
+            "optionsList": [
+                {"optionSequenceNo": 1, "optionText": "The appointment is rejected because it exceeds the 14-day limit", "isCorrect": True},
+                {"optionSequenceNo": 2, "optionText": "The appointment is accepted immediately", "isCorrect": False},
+                {"optionSequenceNo": 3, "optionText": "The appointment is converted to an emergency walk-in", "isCorrect": False},
+                {"optionSequenceNo": 4, "optionText": "The patient is redirected to moderate priority", "isCorrect": False}
+            ]
+        }
+    ]
+}
+
+
+def test_valid_multi_scenario_payload():
+    """Test valid response with 2 scenarios and 5 questions (both MCQ and MSQ)."""
+    raw = json.dumps(VALID_MULTI_SCENARIO_PAYLOAD)
+    validated, parsed = JSONValidator.validate_raw_response(raw)
+    assert len(validated.scenarios) == 2
+    assert len(validated.questions) == 5
+    assert any(q.questionFormat == "MCQ" for q in validated.questions)
+    assert any(q.questionFormat == "MSQ" for q in validated.questions)
+    for q in validated.questions:
+        assert not hasattr(q, "calculationDraft")
+        assert not hasattr(q, "scenarioId")
+
+
+def test_validate_generated_scenarios():
+    """Test parsing and validating 2 distinct scenarios generated from topic."""
+    scenarios_json = json.dumps({
+        "topic": "Online Hospital Appointment Booking System",
+        "scenarios": [
+            {
+                "scenarioId": "11111111-1111-4111-8111-111111111111",
+                "scenarioText": "A patient attempts to book an appointment with a cardiologist using the mobile hospital app."
+            },
+            {
+                "scenarioId": "22222222-2222-4222-8222-222222222222",
+                "scenarioText": "A specialist clinic manages emergency walk-in consultations where nurses assign priority."
+            }
+        ]
+    })
+    scenarios = JSONValidator.validate_generated_scenarios(scenarios_json, topic="Hospital")
+    assert len(scenarios) == 2
+    assert scenarios[0].scenarioId == "11111111-1111-4111-8111-111111111111"
+    assert "cardiologist" in scenarios[0].scenarioText
+
+
+def test_validate_generated_scenarios_fails_on_single_scenario():
+    """Test that generating fewer than 2 scenarios fails validation."""
+    scenarios_json = json.dumps({
+        "scenarios": [
+            {
+                "scenarioId": "11111111-1111-4111-8111-111111111111",
+                "scenarioText": "Only a single scenario text here that is long enough."
+            }
+        ]
+    })
+    with pytest.raises(ValueError, match="Expected exactly 2 or 3 distinct scenarios"):
+        JSONValidator.validate_generated_scenarios(scenarios_json)
+
+
+def test_validate_generated_scenarios_fails_on_more_than_three():
+    """Test that generating more than 3 scenarios fails validation."""
+    scenarios_json = json.dumps({
+        "scenarios": [
+            {"scenarioId": str(uuid.uuid4()), "scenarioText": "First scenario text that is long enough."},
+            {"scenarioId": str(uuid.uuid4()), "scenarioText": "Second scenario text that is long enough."},
+            {"scenarioId": str(uuid.uuid4()), "scenarioText": "Third scenario text that is long enough."},
+            {"scenarioId": str(uuid.uuid4()), "scenarioText": "Fourth scenario text that is long enough."},
+        ]
+    })
+    with pytest.raises(ValueError, match="Expected exactly 2 or 3 distinct scenarios"):
+        JSONValidator.validate_generated_scenarios(scenarios_json)
+
+
+def test_fails_when_all_questions_are_mcq_in_multi_scenario():
+    """Test validation fails when multi-scenario has no MSQ questions."""
+    payload = json.loads(json.dumps(VALID_MULTI_SCENARIO_PAYLOAD))
+    # Convert all MSQ questions to MCQ with 1 correct option
+    for q in payload["questions"]:
+        q["questionFormat"] = "MCQ"
+        for opt in q["optionsList"]:
+            opt["isCorrect"] = (opt["optionSequenceNo"] == 1)
+
+    with pytest.raises(ValueError, match="must include both MCQ .* and MSQ"):
+        JSONValidator.validate_raw_response(json.dumps(payload))
+
+
+def test_fails_when_all_questions_are_msq_in_multi_scenario():
+    """Test validation fails when multi-scenario has no MCQ questions."""
+    payload = json.loads(json.dumps(VALID_MULTI_SCENARIO_PAYLOAD))
+    # Convert all MCQ questions to MSQ with 2 correct options
+    for q in payload["questions"]:
+        q["questionFormat"] = "MSQ"
+        for opt in q["optionsList"]:
+            opt["isCorrect"] = (opt["optionSequenceNo"] in (1, 2))
+
+    with pytest.raises(ValueError, match="must include both MCQ .* and MSQ"):
+        JSONValidator.validate_raw_response(json.dumps(payload))
+
+
+def test_fails_when_msq_has_fewer_than_two_correct_options():
+    """Test validation fails when an MSQ question has only 1 correct option."""
+    payload = json.loads(json.dumps(VALID_MULTI_SCENARIO_PAYLOAD))
+    # Find MSQ and make only 1 correct option
+    for q in payload["questions"]:
+        if q["questionFormat"] == "MSQ":
+            for opt in q["optionsList"]:
+                opt["isCorrect"] = (opt["optionSequenceNo"] == 1)
+            break
+
+    with pytest.raises(ValueError, match="At least TWO options must have isCorrect: true"):
+        JSONValidator.validate_raw_response(json.dumps(payload))
+
+
+def test_extra_fields_stripped_from_questions():
+    """Test that scenarioId and calculationDraft on questions are safely stripped/ignored."""
+    payload = json.loads(json.dumps(VALID_MULTI_SCENARIO_PAYLOAD))
+    for q in payload["questions"]:
+        q["scenarioId"] = "11111111-1111-4111-8111-111111111111"
+        q["calculationDraft"] = "Should be stripped"
+
+    validated = JSONValidator.validate_schema(payload)
+    for q in validated.questions:
+        assert not hasattr(q, "calculationDraft")
+        assert not hasattr(q, "scenarioId")
+
+
+
